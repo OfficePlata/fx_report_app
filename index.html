@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FX運用管理アプリ</title>
-    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
-    <script src="[https://unpkg.com/react@18/umd/react.production.min.js](https://unpkg.com/react@18/umd/react.production.min.js)" crossorigin></script>
-    <script src="[https://unpkg.com/react-dom@18/umd/react-dom.production.min.js](https://unpkg.com/react-dom@18/umd/react-dom.production.min.js)" crossorigin></script>
-    <script src="[https://unpkg.com/@babel/standalone/babel.min.js](https://unpkg.com/@babel/standalone/babel.min.js)"></script>
-    <link href="[https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap](https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap)" rel="stylesheet" />
+    <!-- 外部ライブラリの読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <style>
         body { background-color: #030712; color: #e2e8f0; font-family: 'Noto Sans JP', sans-serif; margin: 0; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar { width: 6px; } 
+        ::-webkit-scrollbar-track { background: #0f172a; } 
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         @keyframes pulse-red { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
@@ -27,7 +30,6 @@
           daily_pnl: "", notes: "",
         };
 
-        // チェックリストデータ (前回と同じ)
         const morningChecks = [
           { id: "line_notify", label: "LINEに異常通知がないか", location: "スマホ", normal: "通知なし or エントリー通知のみ" },
           { id: "machine1_margin", label: "1号機 証拠金維持率", location: "VPS→MT5下部", normal: "500%以上 🟢" },
@@ -35,12 +37,14 @@
           { id: "doctor_mark", label: "両機の博士マークが青か", location: "チャート右上", normal: "🔵青" },
           { id: "algo_button", label: "アルゴリズム取引ボタン", location: "ツールバー", normal: "🟢緑" },
         ];
+        
         const eveningChecks = [
           { id: "daily_pnl", label: "今日の損益確認", detail: "MT5「口座履歴」タブで当日分を確認" },
           { id: "margin_rate", label: "証拠金維持率の確認", detail: "両機とも500%以上か" },
           { id: "abnormal_pos", label: "異常ポジションがないか", detail: "極端に大きな含み損がないか" },
           { id: "vps_alive", label: "VPSが生きているか", detail: "リモート接続できるか" },
         ];
+        
         const weeklyChecks = [
           { id: "weekly_pnl", label: "週間損益の集計", detail: "今週いくら増えた/減ったか", location: "MT5口座履歴" },
           { id: "balance_trend", label: "残高の推移確認", detail: "先週と比較", location: "MT5下部バー" },
@@ -48,6 +52,7 @@
           { id: "vps_fee", label: "VPS料金の確認", detail: "自動引き落とし確認", location: "ConoHaマイページ" },
           { id: "broker_balance", label: "XM・STの入金残高", detail: "各ブローカーマイページ", location: "ブラウザ" },
         ];
+        
         const monthlyChecks = [
           { id: "monthly_pnl", label: "月間損益の集計", detail: "今月のトータル損益を記録" },
           { id: "lot_adjust", label: "ロット設定の見直し", detail: "資金増減に合わせて調整" },
@@ -147,7 +152,7 @@
                 <p className="text-slate-500 text-xs mt-1">PNG / JPG / WEBP 対応</p>
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => processImages(e.target.files)} />
-              {loading && <div className="text-center text-blue-400 text-sm">解析中...</div>}
+              {loading && <div className="text-center text-blue-400 text-sm flex justify-center items-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 解析中...</div>}
               {error && <div className="text-center text-red-400 text-sm">{error}</div>}
               {uploadedImages.length > 0 && !loading && (
                 <div className="flex gap-2 mt-2">
@@ -185,11 +190,22 @@
           const handleSendToLark = async () => {
             setSending(true);
             try {
+              // Lark側で「数字」フィールドとして受け取れるように数値を明示的に変換（キャスト）して送信
+              const payloadToLark = {
+                date: dailyLog.date,
+                machine1_balance: dailyLog.machine1_balance ? Number(dailyLog.machine1_balance) : null,
+                machine1_margin: dailyLog.machine1_margin ? Number(dailyLog.machine1_margin) : null,
+                machine2_balance: dailyLog.machine2_balance ? Number(dailyLog.machine2_balance) : null,
+                machine2_margin: dailyLog.machine2_margin ? Number(dailyLog.machine2_margin) : null,
+                daily_pnl: dailyLog.daily_pnl ? Number(dailyLog.daily_pnl) : null,
+                notes: dailyLog.notes
+              };
+
               // 🛡️ Cloudflare Functionsの独自API（/api/lark）を叩く
               const res = await fetch('/api/lark', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dailyLog)
+                body: JSON.stringify(payloadToLark)
               });
               
               if (!res.ok) {
@@ -273,7 +289,9 @@
                           
                           <div className="flex gap-3 pt-2">
                             <button onClick={handleSaveLog} className={`flex-1 p-3 rounded-lg font-bold text-sm transition-all duration-200 ${saved ? "bg-emerald-600 text-white" : "bg-slate-700 text-white hover:bg-slate-600"}`}>{saved ? "✅ 保存済" : "💾 ブラウザ保存"}</button>
-                            <button onClick={handleSendToLark} disabled={sending} className={`flex-1 p-3 rounded-lg font-bold text-sm transition-all duration-200 flex justify-center items-center gap-2 ${larkSuccess ? "bg-emerald-600 text-white" : sending ? "bg-blue-800 text-slate-300" : "bg-blue-600 text-white hover:bg-blue-500"}`}>{sending ? "送信中..." : larkSuccess ? "✅ Lark送信完了" : "🚀 Larkへ送信"}</button>
+                            <button onClick={handleSendToLark} disabled={sending} className={`flex-1 p-3 rounded-lg font-bold text-sm transition-all duration-200 flex justify-center items-center gap-2 ${larkSuccess ? "bg-emerald-600 text-white" : sending ? "bg-blue-800 text-slate-300" : "bg-blue-600 text-white hover:bg-blue-500"}`}>
+                              {sending ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 送信中...</> : larkSuccess ? "✅ Lark送信完了" : "🚀 Larkへ送信"}
+                            </button>
                           </div>
                         </div>
                       </div>
