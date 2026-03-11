@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FX運用管理アプリ</title>
+    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
+    <script src="[https://unpkg.com/react@18/umd/react.production.min.js](https://unpkg.com/react@18/umd/react.production.min.js)" crossorigin></script>
+    <script src="[https://unpkg.com/react-dom@18/umd/react-dom.production.min.js](https://unpkg.com/react-dom@18/umd/react-dom.production.min.js)" crossorigin></script>
+    <script src="[https://unpkg.com/@babel/standalone/babel.min.js](https://unpkg.com/@babel/standalone/babel.min.js)"></script>
+    <link href="[https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap](https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap)" rel="stylesheet" />
+    <style>
+        body { background-color: #030712; color: #e2e8f0; font-family: 'Noto Sans JP', sans-serif; margin: 0; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        @keyframes pulse-red { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useRef, useCallback, useEffect } = React;
+
+        const initialDailyLog = {
+          date: new Date().toISOString().split("T")[0],
+          machine1_balance: "", machine1_margin: "",
+          machine2_balance: "", machine2_margin: "",
+          daily_pnl: "", notes: "",
+        };
+
+        // チェックリストデータ (前回と同じ)
+        const morningChecks = [
+          { id: "line_notify", label: "LINEに異常通知がないか", location: "スマホ", normal: "通知なし or エントリー通知のみ" },
+          { id: "machine1_margin", label: "1号機 証拠金維持率", location: "VPS→MT5下部", normal: "500%以上 🟢" },
+          { id: "machine2_margin", label: "2号機 証拠金維持率", location: "VPS→MT5下部", normal: "500%以上 🟢" },
+          { id: "doctor_mark", label: "両機の博士マークが青か", location: "チャート右上", normal: "🔵青" },
+          { id: "algo_button", label: "アルゴリズム取引ボタン", location: "ツールバー", normal: "🟢緑" },
+        ];
+        const eveningChecks = [
+          { id: "daily_pnl", label: "今日の損益確認", detail: "MT5「口座履歴」タブで当日分を確認" },
+          { id: "margin_rate", label: "証拠金維持率の確認", detail: "両機とも500%以上か" },
+          { id: "abnormal_pos", label: "異常ポジションがないか", detail: "極端に大きな含み損がないか" },
+          { id: "vps_alive", label: "VPSが生きているか", detail: "リモート接続できるか" },
+        ];
+        const weeklyChecks = [
+          { id: "weekly_pnl", label: "週間損益の集計", detail: "今週いくら増えた/減ったか", location: "MT5口座履歴" },
+          { id: "balance_trend", label: "残高の推移確認", detail: "先週と比較", location: "MT5下部バー" },
+          { id: "lot_review", label: "ロット設定の見直し", detail: "資金が大きく変わっていれば調整", location: "EAパラメータ" },
+          { id: "vps_fee", label: "VPS料金の確認", detail: "自動引き落とし確認", location: "ConoHaマイページ" },
+          { id: "broker_balance", label: "XM・STの入金残高", detail: "各ブローカーマイページ", location: "ブラウザ" },
+        ];
+        const monthlyChecks = [
+          { id: "monthly_pnl", label: "月間損益の集計", detail: "今月のトータル損益を記録" },
+          { id: "lot_adjust", label: "ロット設定の見直し", detail: "資金増減に合わせて調整" },
+          { id: "add_funds", label: "追加入金の検討", detail: "資金を増やすか判断" },
+          { id: "iida_report", label: "飯田さんへの報告", detail: "運用状況を共有・アドバイスをもらう" },
+        ];
+
+        function MarginStatus({ value }) {
+          if (!value) return <span className="text-slate-500">-</span>;
+          const num = parseFloat(value);
+          if (num >= 500) return <span className="text-emerald-400 font-bold">{value}% 🟢</span>;
+          if (num >= 300) return <span className="text-yellow-400 font-bold">{value}% 🟡</span>;
+          return <span className="text-red-400 font-bold">{value}% 🔴</span>;
+        }
+
+        function CheckList({ items, checked, onToggle, color }) {
+          return (
+            <div className="space-y-2">
+              {items.map(item => (
+                <div key={item.id} onClick={() => onToggle(item.id)} className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all duration-150" style={{ background: checked[item.id] ? `${color}15` : "rgba(30, 41, 59, 0.4)", border: `1px solid ${checked[item.id] ? color + "40" : "#334155"}` }}>
+                  <div style={{ width: "20px", height: "20px", borderRadius: "4px", flexShrink: 0, border: `2px solid ${checked[item.id] ? color : "#475569"}`, background: checked[item.id] ? color : "transparent", display: "flex", alignItems: "center", justifyContent: "center", marginTop: "2px" }}>
+                    {checked[item.id] && <span style={{ color: "#000", fontSize: "12px", fontWeight: "bold" }}>✓</span>}
+                  </div>
+                  <div>
+                    <div style={{ color: checked[item.id] ? "#cbd5e1" : "#e2e8f0", fontSize: "14px", fontWeight: "500", textDecoration: checked[item.id] ? "line-through" : "none", opacity: checked[item.id] ? 0.6 : 1 }}>{item.label}</div>
+                    {(item.detail || item.location || item.normal) && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        {item.location && <span className="text-slate-400">{item.location} · </span>}{item.detail || item.normal}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        function OCRUploader({ onExtracted }) {
+          const [loading, setLoading] = useState(false);
+          const [dragOver, setDragOver] = useState(false);
+          const [uploadedImages, setUploadedImages] = useState([]);
+          const [error, setError] = useState(null);
+          const fileInputRef = useRef(null);
+
+          const processImages = useCallback(async (files) => {
+            if (!files.length) return;
+            setLoading(true); setError(null);
+            
+            try {
+              const imagePromises = Array.from(files).map(file => {
+                return new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = (e) => resolve({ mimeType: file.type, data: e.target.result.split(",")[1], previewUrl: e.target.result });
+                  reader.onerror = reject; reader.readAsDataURL(file);
+                });
+              });
+
+              const images = await Promise.all(imagePromises);
+              setUploadedImages(images.map(img => img.previewUrl));
+
+              // 🛡️ Cloudflare Functionsの独自API（/api/ocr）を叩く
+              const response = await fetch('/api/ocr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  images: images.map(img => ({ mimeType: img.mimeType, data: img.data }))
+                })
+              });
+
+              if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || `HTTP Error: ${response.status}`);
+              }
+
+              const parsedData = await response.json();
+              onExtracted(parsedData);
+            } catch (err) {
+              console.error("OCR error:", err);
+              setError(`解析エラー: ${err.message}`);
+            } finally {
+              setLoading(false);
+            }
+          }, [onExtracted]);
+
+          return (
+            <div className="space-y-3">
+              <div
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); processImages(e.dataTransfer.files); }}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onClick={() => fileInputRef.current?.click()}
+                className="cursor-pointer transition-all duration-200"
+                style={{ border: `2px dashed ${dragOver ? "#3b82f6" : "#334155"}`, borderRadius: "12px", padding: "32px", textAlign: "center", background: dragOver ? "rgba(59,130,246,0.05)" : "rgba(15,23,42,0.5)" }}
+              >
+                <div className="text-4xl mb-2">📸</div>
+                <p className="text-slate-400 text-sm m-0 whitespace-pre-wrap">{loading ? "バックエンドでAI解析中..." : "スクショをここにドロップ\nまたはクリックして選択"}</p>
+                <p className="text-slate-500 text-xs mt-1">PNG / JPG / WEBP 対応</p>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => processImages(e.target.files)} />
+              {loading && <div className="text-center text-blue-400 text-sm">解析中...</div>}
+              {error && <div className="text-center text-red-400 text-sm">{error}</div>}
+              {uploadedImages.length > 0 && !loading && (
+                <div className="flex gap-2 mt-2">
+                  {uploadedImages.map((img, i) => <img key={i} src={img} alt={`upload-${i}`} className="w-20 h-14 object-cover rounded-md border border-slate-700" />)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        function App() {
+          const [activeTab, setActiveTab] = useState("record");
+          const [dailyLog, setDailyLog] = useState(initialDailyLog);
+          const [checks, setChecks] = useState({});
+          const [savedLogs, setSavedLogs] = useState([]);
+          const [saved, setSaved] = useState(false);
+          const [sending, setSending] = useState(false);
+          const [larkSuccess, setLarkSuccess] = useState(false);
+
+          const toggleCheck = (id) => setChecks(prev => ({ ...prev, [id]: !prev[id] }));
+
+          const handleOCRExtracted = (data) => {
+            setDailyLog(prev => ({ ...prev, ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== "" && v !== null)) }));
+          };
+
+          const handleSaveLog = () => {
+            setSavedLogs(prev => {
+              const existing = prev.findIndex(l => l.date === dailyLog.date);
+              if (existing >= 0) { const updated = [...prev]; updated[existing] = { ...dailyLog, savedAt: new Date().toISOString() }; return updated; }
+              return [{ ...dailyLog, savedAt: new Date().toISOString() }, ...prev];
+            });
+            setSaved(true); setTimeout(() => setSaved(false), 2000);
+          };
+
+          const handleSendToLark = async () => {
+            setSending(true);
+            try {
+              // 🛡️ Cloudflare Functionsの独自API（/api/lark）を叩く
+              const res = await fetch('/api/lark', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(dailyLog)
+              });
+              
+              if (!res.ok) {
+                  const errData = await res.json();
+                  throw new Error(errData.error || "送信エラー");
+              }
+              
+              setLarkSuccess(true);
+              setTimeout(() => setLarkSuccess(false), 3000);
+            } catch (e) {
+              console.error(e);
+              alert(`Larkへの送信に失敗しました。\nエラー詳細: ${e.message}\nCloudflareの環境変数(LARK_WEBHOOK_URL)が正しく設定されているか確認してください。`);
+            } finally {
+              setSending(false);
+            }
+          };
+
+          const tabs = [
+            { id: "record", label: "📊 日次記録" }, { id: "morning", label: "🌅 朝" }, { id: "evening", label: "🌙 夜" },
+            { id: "weekly", label: "📅 週次" }, { id: "monthly", label: "📅 月次" }, { id: "history", label: "📜 履歴" }
+          ];
+
+          const m1 = parseFloat(dailyLog.machine1_margin); const m2 = parseFloat(dailyLog.machine2_margin);
+          const getAlert = (v) => !v ? null : v >= 500 ? "green" : v >= 300 ? "yellow" : "red";
+          const alert1 = getAlert(m1); const alert2 = getAlert(m2);
+
+          return (
+            <div className="min-h-screen flex flex-col items-center pb-20">
+              <div className="w-full bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-10 shadow-lg">
+                <div className="max-w-3xl mx-auto flex items-center justify-between">
+                  <div>
+                    <h1 className="m-0 text-lg font-bold tracking-wide">📉 FX運用管理 (Secure)</h1>
+                    <p className="m-0 mt-0.5 text-xs text-slate-400">{new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {[{ label: "1号機", alert: alert1, val: dailyLog.machine1_margin }, { label: "2号機", alert: alert2, val: dailyLog.machine2_margin }].map(({ label, alert, val }) => (
+                      <div key={label} className={`px-2.5 py-1 rounded-full text-xs font-bold border ${alert === "green" ? "bg-emerald-900/30 border-emerald-500/30 text-emerald-400" : alert === "yellow" ? "bg-yellow-900/30 border-yellow-500/30 text-yellow-400" : alert === "red" ? "bg-red-900/30 border-red-500/30 text-red-400 shadow-[0_0_10px_rgba(248,113,113,0.3)]" : "bg-slate-800 border-slate-700 text-slate-400"}`} style={{ animation: alert === "red" ? "pulse-red 1s infinite" : "none" }}>{label} {val ? `${val}%` : "--"}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Alerts */}
+              {(alert1 === "red" || alert2 === "red") && (<div className="w-full bg-red-900/50 border-b border-red-500/50 p-2.5 text-center shadow-inner"><span className="text-red-300 font-bold text-sm tracking-wide">🚨 証拠金維持率が300%以下！即対応してください</span></div>)}
+              {(alert1 === "yellow" || alert2 === "yellow") && !(alert1 === "red" || alert2 === "red") && (<div className="w-full bg-yellow-900/50 border-b border-yellow-500/50 p-2.5 text-center"><span className="text-yellow-300 font-bold text-sm">⚠️ 証拠金維持率が低下しています。</span></div>)}
+
+              <div className="w-full max-w-3xl mt-6 px-4">
+                <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                  {tabs.map(tab => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3.5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${activeTab === tab.id ? "bg-blue-600 text-white shadow-md" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>{tab.label}</button>
+                  ))}
+                </div>
+
+                <div className="animate-fade-in">
+                  {activeTab === "morning" && (<div><h2 className="text-base font-bold text-yellow-400 mb-4">🌅 朝チェック</h2><CheckList items={morningChecks} checked={checks} onToggle={toggleCheck} color="#facc15" /></div>)}
+                  {activeTab === "evening" && (<div><h2 className="text-base font-bold text-indigo-400 mb-4">🌙 夜チェック</h2><CheckList items={eveningChecks} checked={checks} onToggle={toggleCheck} color="#818cf8" /></div>)}
+                  {activeTab === "weekly" && (<div><h2 className="text-base font-bold text-emerald-400 mb-4">📅 週次チェック</h2><CheckList items={weeklyChecks} checked={checks} onToggle={toggleCheck} color="#34d399" /></div>)}
+                  {activeTab === "monthly" && (<div><h2 className="text-base font-bold text-pink-400 mb-4">📅 月次チェック</h2><CheckList items={monthlyChecks} checked={checks} onToggle={toggleCheck} color="#f472b6" /></div>)}
+
+                  {activeTab === "record" && (
+                    <div className="space-y-4">
+                      <div className="bg-slate-900/80 rounded-xl border border-slate-800 p-5 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2"><span>🤖</span> AI画像解析（Cloudflareバックエンド経由）</h3>
+                        <OCRUploader onExtracted={handleOCRExtracted} />
+                      </div>
+
+                      <div className="bg-slate-900/80 rounded-xl border border-slate-800 p-5 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><span>✏️</span> 記録フォーム</h3>
+                        <div className="space-y-4">
+                          <div><label className="text-xs text-slate-500 block mb-1.5">日付</label><input type="date" value={dailyLog.date} onChange={e => setDailyLog(p => ({ ...p, date: e.target.value }))} className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 text-sm outline-none focus:border-blue-500" /></div>
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { key: "machine1_balance", label: "1号機 残高(円)", alert: alert1 }, { key: "machine1_margin", label: "1号機 維持率(%)", alert: alert1 },
+                              { key: "machine2_balance", label: "2号機 残高(円)", alert: alert2 }, { key: "machine2_margin", label: "2号機 維持率(%)", alert: alert2 },
+                            ].map(({ key, label, alert }) => (
+                              <div key={key}><label className="text-xs text-slate-500 block mb-1.5">{label}</label><input type="number" value={dailyLog[key]} onChange={e => setDailyLog(p => ({ ...p, [key]: e.target.value }))} className={`w-full p-2.5 font-mono bg-slate-800 border rounded-lg text-slate-200 text-sm outline-none ${alert === "green" ? "border-emerald-500/30" : alert === "yellow" ? "border-yellow-500/30" : alert === "red" ? "border-red-500/50 bg-red-900/10" : "border-slate-700 focus:border-blue-500"}`} placeholder="0" /></div>
+                            ))}
+                          </div>
+                          <div><label className="text-xs text-slate-500 block mb-1.5">本日損益（円）</label><input type="number" value={dailyLog.daily_pnl} onChange={e => setDailyLog(p => ({ ...p, daily_pnl: e.target.value }))} className={`w-full p-2.5 font-mono bg-slate-800 border border-slate-700 rounded-lg text-sm outline-none focus:border-blue-500 ${dailyLog.daily_pnl > 0 ? "text-emerald-400" : dailyLog.daily_pnl < 0 ? "text-red-400" : "text-slate-200"}`} placeholder="例: 1500" /></div>
+                          <div><label className="text-xs text-slate-500 block mb-1.5">特記事項</label><textarea value={dailyLog.notes} onChange={e => setDailyLog(p => ({ ...p, notes: e.target.value }))} rows={2} className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 text-sm outline-none focus:border-blue-500 resize-y" /></div>
+                          
+                          <div className="flex gap-3 pt-2">
+                            <button onClick={handleSaveLog} className={`flex-1 p-3 rounded-lg font-bold text-sm transition-all duration-200 ${saved ? "bg-emerald-600 text-white" : "bg-slate-700 text-white hover:bg-slate-600"}`}>{saved ? "✅ 保存済" : "💾 ブラウザ保存"}</button>
+                            <button onClick={handleSendToLark} disabled={sending} className={`flex-1 p-3 rounded-lg font-bold text-sm transition-all duration-200 flex justify-center items-center gap-2 ${larkSuccess ? "bg-emerald-600 text-white" : sending ? "bg-blue-800 text-slate-300" : "bg-blue-600 text-white hover:bg-blue-500"}`}>{sending ? "送信中..." : larkSuccess ? "✅ Lark送信完了" : "🚀 Larkへ送信"}</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "history" && (
+                    <div><h2 className="text-base font-bold text-slate-300 mb-4">📜 履歴</h2>
+                      {savedLogs.length === 0 ? <div className="text-center p-10 bg-slate-900/50 rounded-xl border border-slate-800 text-slate-500 text-sm">まだ記録がありません。</div> : (
+                        <div className="space-y-3">
+                          {savedLogs.map((log, i) => (
+                            <div key={i} className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                              <div className="flex justify-between items-center mb-3">
+                                <span className="font-bold text-slate-200 font-mono text-sm">{log.date}</span>
+                                <span className={`text-sm font-bold ${log.daily_pnl > 0 ? "text-emerald-400" : log.daily_pnl < 0 ? "text-red-400" : "text-slate-500"}`}>{log.daily_pnl ? (log.daily_pnl > 0 ? "+" : "") + Number(log.daily_pnl).toLocaleString() + "円" : "--"}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="text-slate-500">1号機: <span className="text-slate-300 ml-1">{log.machine1_balance || "--"}</span> / <MarginStatus value={log.machine1_margin} /></div>
+                                <div className="text-slate-500">2号機: <span className="text-slate-300 ml-1">{log.machine2_balance || "--"}</span> / <MarginStatus value={log.machine2_margin} /></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
